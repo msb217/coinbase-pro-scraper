@@ -1,0 +1,34 @@
+buildscript {
+    repositories {
+        mavenCentral()
+        jcenter()
+    }
+}
+
+plugins {
+    id 'io.franzbecker.gradle-lombok' version '1.14'
+    id 'nebula.release' version '6.3.5'
+    id 'nebula.dependency-lock' version '7.1.0'
+    id 'nebula.gradle-scm' version '4.1.0'
+    id 'com.jfrog.artifactory' version '4.7.5'
+    id 'com.bmuschko.docker-remote-api' version '3.6.1'
+    id 'org.springframework.boot' version '2.1.4.RELEASE'
+}
+
+group 'io.buell'
+version '0.0.1'
+
+repositories {
+    mavenCentral()
+    jcenter()
+}
+
+subprojects {
+    apply plugin: 'java'
+    apply plugin: 'maven'
+    apply plugin: 'maven-publish'
+    apply plugin: 'nebula.nebula-release'
+    apply plugin: 'com.bmuschko.docker-remote-api'
+    apply plugin: 'org.springframework.boot'
+    apply plugin: 'io.spring.dependency-management'
+}

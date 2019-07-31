@@ -1,0 +1,4 @@
+rootProject.name = 'processor'
+include 'processor-controller'
+include 'processor-library'
+

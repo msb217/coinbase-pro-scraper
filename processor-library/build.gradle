@@ -1,0 +1,84 @@
+plugins {
+    id 'java'
+}
+
+group 'io.buell'
+version '0.0.1'
+
+sourceCompatibility = 1.8
+
+repositories {
+    mavenCentral()
+}
+
+apply plugin: 'java'
+apply plugin: 'scala'
+
+dependencies {
+    ext.sparkVersion = '2.4.0'
+    ext.sparkScalaVersion = '2.11'
+    ext.scalaVersion = '2.11.12'
+    ext.hadoopVersion = '2.7.3'
+
+    compile "org.scala-lang:scala-library:$scalaVersion"
+    compile "org.scala-lang:scala-reflect:$scalaVersion"
+    compile "org.scala-lang:scala-compiler:$scalaVersion"
+    compile ("org.apache.spark:spark-mllib_$sparkScalaVersion:$sparkVersion"){
+        exclude group: 'com.fasterxml.jackson.core', module: 'jackson-databind'
+        exclude group: 'com.fasterxml.jackson.core', module: 'jackson-core'
+        exclude group: 'com.fasterxml.jackson.core', module: 'jackson-annotations'
+    }
+
+    compile ("org.apache.spark:spark-sql_$sparkScalaVersion:$sparkVersion"){
+        exclude group: 'com.fasterxml.jackson.core', module: 'jackson-databind'
+        exclude group: 'com.fasterxml.jackson.core', module: 'jackson-core'
+        exclude group: 'com.fasterxml.jackson.core', module: 'jackson-annotations'
+    }
+
+    compile ("org.apache.spark:spark-core_$sparkScalaVersion:$sparkVersion") {
+        exclude group: 'com.fasterxml.jackson.core', module: 'jackson-databind'
+        exclude group: 'com.fasterxml.jackson.core', module: 'jackson-core'
+        exclude group: 'com.fasterxml.jackson.core', module: 'jackson-annotations'
+        //exclude group: 'org.slf4j'
+    }
+
+    compile('com.fasterxml.jackson.core:jackson-databind:2.9.6')
+
+    // https://mvnrepository.com/artifact/org.apache.httpcomponents/httpclient
+    compile group: 'org.apache.httpcomponents', name: 'httpclient', version: '4.5.6'
+
+    // https://mvnrepository.com/artifact/org.slf4j/slf4j-api
+    compile group: 'org.slf4j', name: 'slf4j-api', version: '1.7.26'
+
+    // https://mvnrepository.com/artifact/ch.qos.logback/logback-classic
+    compile group: 'ch.qos.logback', name: 'logback-classic', version: '1.2.3'
+    compile group: 'org.springframework', name: 'spring-web', version: '5.1.7.RELEASE'
+
+    // https://mvnrepository.com/artifact/org.slf4j/slf4j-api
+    compile group: 'org.slf4j', name: 'slf4j-api', version: '1.7.26'
+
+    // https://mvnrepository.com/artifact/ch.qos.logback/logback-classic
+    compile group: 'ch.qos.logback', name: 'logback-classic', version: '1.2.3'
+
+    testCompile group: 'junit', name: 'junit', version: '4.12'
+}
+
+sourceSets {
+    main {
+        scala {
+            srcDirs = ['src/main/scala']
+        }
+    }
+}
+
+jar.enabled = true
+
+jar{
+    manifest {
+        attributes  'Implementation-Title': project.name,
+                'Implementation-Version': version,
+                'Class-Path': configurations.runtime.collect { it.getName() }.join(' ')
+    }
+}
+
+sourceSets.main.compileClasspath
