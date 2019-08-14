@@ -10,6 +10,7 @@ import org.apache.http.client.methods.HttpGet
 import org.apache.http.client.utils.URIBuilder
 import org.apache.http.impl.client.HttpClients
 import org.apache.http.util.EntityUtils
+import org.apache.spark.sql.types.{FloatType, LongType, StructType}
 import org.apache.spark.sql.{DataFrame, SparkSession}
 import org.slf4j.LoggerFactory
 import org.springframework.http.HttpStatus
@@ -23,7 +24,6 @@ class ProcessorLibrary {
   private val url = System.getProperty("coinbase-pro.url")
   private val logger = LoggerFactory.getLogger(classOf[ProcessorLibrary])
 
-  // 2016-01-01T00:00:00Z
   private var epoch: Long = 1483228800
   private val candles = 300
   private val granularity = 60
@@ -126,8 +126,9 @@ class ProcessorLibrary {
 
     if (24000 <= df.count) {
       beginning = df.orderBy("epoch").first().getLong(0)
-      df.orderBy("epoch").coalesce(1).write.csv("ticks/csv/" + beginning +"_"+ticks(ticks.length - 1).epoch)
-      df.orderBy("epoch").coalesce(1).write.parquet("ticks/parquet/" +beginning+"_"+ ticks(ticks.length - 1).epoch)
+
+      df.orderBy("epoch").coalesce(1).write.option("header", true).csv("ticks/csv/" + beginning +"_"+ticks(ticks.length - 1).epoch)
+      df.orderBy("epoch").coalesce(1).write.option("header", true).parquet("ticks/parquet/" +beginning+"_"+ ticks(ticks.length - 1).epoch)
       df = null
     }
   }
