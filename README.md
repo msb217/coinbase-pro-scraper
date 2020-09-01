@@ -4,6 +4,7 @@ Retrieves coinbase-pro financial metrics for a specified coin-pairing and writes
 ### TODO
 * support more than just 1 minute intervals
 * optimize df aggregation
+* make project more spring-like
 * better req/response support for controller
     * GET - status of scraping. # of rows, current epoch, etc.
     * error codes
