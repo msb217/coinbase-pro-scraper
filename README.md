@@ -11,3 +11,4 @@ Fetches coinbase-pro financial metrics for a specified coin-pairing and writes t
 * persistence for scraping status - should be able to pickup where left off if killed
 * poll for new candles
 * specify spark cluster rather than just local
+* build standalone app
