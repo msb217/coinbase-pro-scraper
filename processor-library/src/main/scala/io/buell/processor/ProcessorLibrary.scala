@@ -10,34 +10,36 @@ import org.apache.http.client.methods.HttpGet
 import org.apache.http.client.utils.URIBuilder
 import org.apache.http.impl.client.HttpClients
 import org.apache.http.util.EntityUtils
-import org.apache.spark.sql.types.{FloatType, LongType, StructType}
-import org.apache.spark.sql.{DataFrame, SparkSession}
+import org.apache.spark.SparkContext
+import org.apache.spark.sql.{DataFrame, SQLContext, SparkSession}
 import org.slf4j.LoggerFactory
 import org.springframework.http.HttpStatus
 
 import scala.collection.mutable.ListBuffer
 
 class ProcessorLibrary {
+  private val logger = LoggerFactory.getLogger(classOf[ProcessorLibrary])
+
   private val key = System.getProperty("coinbase-pro.key")
   private val secretKey = System.getProperty("coinbase-pro.secretKey")
   private val passphrase = System.getProperty("coinbase-pro.passphrase")
-  private val url = System.getProperty("coinbase-pro.url")
-  private val logger = LoggerFactory.getLogger(classOf[ProcessorLibrary])
 
-  private var epoch: Long = 1483228800
-  private val candles = 300
-  private val granularity = 60
-
-  val spark = SparkSession
+  val spark: SparkSession = SparkSession
     .builder
     .appName("ProcessorLibrary")
     .config("spark.master", "local")
     .getOrCreate()
 
-  val sc = spark.sparkContext
-  val sql = spark.sqlContext
+  val sc: SparkContext = spark.sparkContext
+  val sql: SQLContext = spark.sqlContext
+
+  private val mapper = new ObjectMapper
 
   private var df: DataFrame = null
+  private val url = System.getProperty("coinbase-pro.url")
+  private var epoch: Long = 1483228800
+  private val candles = 300
+  private val granularity = 60
 
   @throws[IOException]
   @throws[URISyntaxException]
@@ -48,49 +50,61 @@ class ProcessorLibrary {
     while ( {
       epoch < new Date().toInstant.getEpochSecond
     }) {
-      var builder = new URIBuilder("https://" + url)
-      builder.setPath("/products/" + pair + "/candles")
-      builder.setParameter("granularity", String.valueOf(granularity))
-      builder.setParameter("start", Utils.getDateForISO8601(epoch))
+
+      ///// Compute new epoch
       epoch = epoch + candles * granularity
-      builder.setParameter("end", Utils.getDateForISO8601(epoch))
-      val get = new HttpGet(builder.build)
-      val response = client.execute(get)
-      val mapper = new ObjectMapper
-      if (HttpStatus.resolve(response.getStatusLine.getStatusCode).is2xxSuccessful) {
-        var responseNode = mapper.readTree(EntityUtils.toString(response.getEntity))
-        //logger.info(EntityUtils.toString(response.getEntity))
-        read(responseNode, epoch)
+
+      ///// Build URI for request
+      val builder = new URIBuilder("https://" + url)
+      builder.setPath("/products/" + pair + "/candles")
+        .setParameter("granularity", String.valueOf(granularity))
+        .setParameter("start", Utils.getDateForISO8601(epoch))
+        .setParameter("end", Utils.getDateForISO8601(epoch))
+
+      val getProductCandlesRequest = new HttpGet(builder.build)
+      val getProductCandlesResponse = client.execute(getProductCandlesRequest)
+
+      if (HttpStatus.resolve(getProductCandlesResponse.getStatusLine.getStatusCode).is2xxSuccessful) {
+        val getProductCandlesResponseNode = mapper.readTree(EntityUtils.toString(getProductCandlesResponse.getEntity))
+        read(getProductCandlesResponseNode, epoch)
         logger.info("End: " + epoch + ", " + Utils.getDateForISO8601(epoch))
       }
       else {
-        logger.error("Error processing request " + String.valueOf(response.getStatusLine.getStatusCode))
-        throw new Exception("Error processing request: "+response)
+        logger.error("Error processing request " + String.valueOf(getProductCandlesResponse.getStatusLine.getStatusCode))
+        throw new Exception("Error processing request: " + getProductCandlesResponse)
       }
+
+      ///// Sleep .5s due to request throttling
+      ///// Probably could be optimized but w/e
       Thread.sleep(500)
     }
   }
 
-  private var previousElement: JsonNode = null
   private var beginning: Long = 0
   private var previousTicks: ListBuffer[tick] = new ListBuffer[tick]
 
   def read(result: JsonNode, epoch: Long): Unit = {
 
-    var elements = result.elements()
-
+    val elements = result.elements()
     var newTicks = new ListBuffer[tick]
 
-    while(elements.hasNext == true) {
-      var element = elements.next()
-      newTicks += tick(element.get(0).longValue, element.get(1).floatValue, element.get(2).floatValue, element.get(3).floatValue, element.get(4).floatValue, element.get(5).floatValue())
+    while (elements.hasNext) {
+      val element = elements.next()
+      newTicks += tick(
+        element.get(0).longValue,
+        element.get(1).floatValue,
+        element.get(2).floatValue,
+        element.get(3).floatValue,
+        element.get(4).floatValue,
+        element.get(5).floatValue
+      )
     }
 
     newTicks = newTicks.sorted
 
     var ticks: ListBuffer[tick] = new ListBuffer[tick]
 
-    if(!previousTicks.isEmpty) {
+    if (previousTicks.nonEmpty) {
       for (ListBuffer(lower, upper) <- previousTicks.sliding(2)) {
         ticks += lower
         for (i <- (lower.epoch + 60) until upper.epoch by 60) {
@@ -101,9 +115,9 @@ class ProcessorLibrary {
 
     ticks = ticks.sorted
 
-    if(!ticks.isEmpty) {
-      var lastTick = ticks(ticks.length - 1)
-      for (i <- (lastTick.epoch + 60) until newTicks(0).epoch by 60) {
+    if (ticks.nonEmpty) {
+      val lastTick = ticks.last
+      for (i <- (lastTick.epoch + 60) until newTicks.head.epoch by 60) {
         ticks += tick(i, lastTick.low, lastTick.high, lastTick.open, lastTick.close, 0)
       }
     }
@@ -111,10 +125,9 @@ class ProcessorLibrary {
     ticks = ticks.sorted
 
     previousTicks = newTicks
-
     previousTicks = previousTicks.sorted
 
-    var iteration = spark.createDataFrame(ticks)
+    val iteration = spark.createDataFrame(ticks)
 
     if (df == null) {
       beginning = epoch
@@ -124,11 +137,24 @@ class ProcessorLibrary {
       df = df.union(iteration)
     }
 
+    ///// Limit DF to an arbitrary size of 24000 then write and clean
+    ///// Filename contains the epochs of the first and last records
+    ///// TODO: take df size as req param or env var?
     if (24000 <= df.count) {
       beginning = df.orderBy("epoch").first().getLong(0)
 
-      df.orderBy("epoch").coalesce(1).write.option("header", true).csv("ticks/csv/" + beginning +"_"+ticks(ticks.length - 1).epoch)
-      df.orderBy("epoch").coalesce(1).write.option("header", true).parquet("ticks/parquet/" +beginning+"_"+ ticks(ticks.length - 1).epoch)
+      df.orderBy("epoch")
+        .coalesce(1)
+        .write
+        .option("header", value = true)
+        .csv("ticks/csv/%s_%s" format (beginning, ticks.last.epoch))
+
+      df.orderBy("epoch")
+        .coalesce(1)
+        .write
+        .option("header", value = true)
+        .parquet("ticks/parquet/%s_%s" format (beginning, ticks.last.epoch) )
+
       df = null
     }
   }
