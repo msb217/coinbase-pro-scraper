@@ -12,3 +12,4 @@ Fetches coinbase-pro financial metrics for a specified coin-pairing and writes t
 * poll for new candles
 * specify spark cluster rather than just local
 * build standalone app
+* start from a specified date rather than a hardcoded one
