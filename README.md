@@ -1,5 +1,5 @@
 # coinbase-pro-scraper
-Retrieves coinbase-pro financial metrics for a specified coin-pairing and writes them to a csv/parquet files.
+Fetches coinbase-pro financial metrics for a specified coin-pairing and writes them to csv/parquet files.
 
 ### TODO
 * support more than just 1 minute intervals
